@@ -11,6 +11,7 @@ package sbt
 import java.io.File
 import java.io.PrintWriter
 import java.lang.ProcessBuilder.Redirect
+import scala.annotation.tailrec
 import scala.sys.process.Process
 import OutputStrategy._
 import sbt.internal.util.{ RunningProcesses, Util }
@@ -141,6 +142,29 @@ object Fork {
       booleanOpt("sbt.argsfile").getOrElse(true) &&
       (options.mkString.length > MaxConcatenatedOptionLength)
 
+  private def escapeOption(str: String): String = {
+    @tailrec
+    def loop(out: StringBuilder, chars: List[Char]): String =
+      chars match {
+        // If the next two chars are an escaped double quote, append them as is
+        case (e @ '\\') :: (q @ '"') :: rest => loop(out.append(e).append(q), rest)
+
+        // If the next char is a double quote, escape it
+        case (q @ '"') :: rest => loop(out.append('\\').append(q), rest)
+
+        // If the next char is an escape char, escape the escape char
+        case (e @ '\\') :: rest => loop(out.append(e).append(e), rest)
+
+        // Otherwise, append the char as is
+        case c :: rest => loop(out.append(c), rest)
+
+        // Terminal case
+        case Nil => out.toString
+      }
+
+    loop(new StringBuilder(), str.toList)
+  }
+
   /**
    * Create an arguments file from a sequence of command line arguments
    * by quoting each argument to a line with escaped backslashes
@@ -155,7 +179,7 @@ object Fork {
     val pw = new PrintWriter(file)
     options.foreach { option =>
       pw.write("\"")
-      pw.write(option.replace("\\", "\\\\"))
+      pw.write(escapeOption(option))
       pw.write("\"")
       pw.write(System.lineSeparator())
     }
